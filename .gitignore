@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Node / React
+node_modules/
+dist/
+.eslintcache
+.DS_Store
+
+# Carpetas de Datos (¡IMPORTANTE!)
+uploads/*
+!uploads/.gitkeep
+sessions/*
+!sessions/.gitkeep
+
+# Logs
+*.log
+nohup.out
+uvicorn.log
+server.log
