@@ -1,6 +1,7 @@
 import os
 import logging
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,18 +12,19 @@ logger = logging.getLogger("LLM")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-    logger.info("Gemini configurado con API KEY")
+    logger.info("API Key detectada para Gemini")
 
 def generate_minutes(transcript_text, attendees_list, google_token=None, model_name=None):
     """
-    Genera el acta usando la API de Gemini.
-    Si se proporciona un google_token, se podría usar para validar identidad.
+    Genera el acta usando la API de Gemini (google-genai).
     """
     
     # Prioridad: 1. El modelo enviado por el frontend, 2. Variable de entorno, 3. Default
-    # Usar models/gemini-2.0-flash como fallback
-    MODEL_NAME = model_name or os.getenv("GEMINI_MODEL", "models/gemini-2.0-flash")
+    MODEL_NAME = model_name or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    
+    # Limpieza básica del nombre del modelo si viene con prefijos antiguos
+    if MODEL_NAME.startswith("models/"):
+        MODEL_NAME = MODEL_NAME.replace("models/", "")
     
     if google_token:
         logger.info("Solicitud de acta recibida con token de usuario Google")
@@ -63,15 +65,18 @@ def generate_minutes(transcript_text, attendees_list, google_token=None, model_n
         Por favor, genera el acta ahora siguiendo el formato Markdown.
         """
 
-        logger.info(f"Generando acta con {MODEL_NAME}...")
-        model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
-            system_instruction=system_prompt
-        )
+        logger.info(f"Generando acta con {MODEL_NAME} usando google-genai...")
         
-        response = model.generate_content(
-            user_prompt,
-            generation_config={"temperature": 0.2}
+        # Inicializar cliente
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.2
+            )
         )
         
         return response.text

@@ -7,7 +7,7 @@ torch
 easyocr
 numpy
 openai
-google-generativeai
+google-genai
 pandas
 openpyxl
 pydantic
