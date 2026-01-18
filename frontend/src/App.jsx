@@ -16,12 +16,14 @@ function App() {
 
   const [generating, setGenerating] = useState(false);
   const [minutes, setMinutes] = useState(null); 
-  
+  const [actaFiles, setActaFiles] = useState({md: null, pdf: null}); // URLs de los archivos del acta
+  const [selectedModel, setSelectedModel] = useState("models/gemini-2.0-flash"); // Modelo por defecto  
   const [editingSlot, setEditingSlot] = useState(null); 
   const [tempSelectedName, setTempSelectedName] = useState("");
 
   // Estados Sesiones
   const [savedSessions, setSavedSessions] = useState([]);
+  const [googleUser, setGoogleUser] = useState(null); // Nuevo estado para Google
   const [currentSessionName, setCurrentSessionName] = useState(""); // El nombre de la sesión cargada
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [sessionName, setSessionName] = useState(""); // El nombre en el input del modal
@@ -47,8 +49,27 @@ function App() {
   useEffect(() => {
     fetchSessions();
     if (status === "idle") {
-        // Re-fetch al volver a la pantalla principal
         fetchSessions();
+        
+        // Inicializar Google Login con reintentos para asegurar que el script cargó
+        const initGoogle = () => {
+            if (window.google) {
+                window.google.accounts.id.initialize({
+                    client_id: "724923020550-k2dtlv2uav2skvkg43otlpcfuocq3tdk.apps.googleusercontent.com",
+                    callback: (res) => {
+                        setGoogleUser(res.credential);
+                        console.log("Usuario identificado con Google");
+                    }
+                });
+                window.google.accounts.id.renderButton(
+                    document.getElementById("google-btn"),
+                    { theme: "outline", size: "large", text: "continue_with" }
+                );
+            } else {
+                setTimeout(initGoogle, 500); // Reintentar en 500ms
+            }
+        };
+        initGoogle();
     }
   }, [status]);
 
@@ -84,9 +105,18 @@ function App() {
     try {
       setGenerating(true);
       const res = await axios.post(`${API_URL}/generate-minutes/${jobId}`, {
-        speaker_mapping: speakerMapping
+        speaker_mapping: speakerMapping,
+        google_user_token: googleUser,
+        model: selectedModel,
+        segments: segments, // Enviamos los segmentos para que funcione con sesiones cargadas
+        attendees: data?.attendees || [],
+        session_name: currentSessionName || jobId // Nombre para guardar los archivos
       });
       setMinutes(res.data.minutes);
+      if (res.data.acta_files) {
+        setActaFiles(res.data.acta_files);
+        fetchSessions(); // Refrescar la lista para mostrar los archivos
+      }
     } catch (err) {
       console.error(err);
       alert("Error generando el acta.");
@@ -324,14 +354,39 @@ function App() {
               )}
             
             {status === "completed" && !isTrimming && (
-                <button 
-                onClick={handleGenerateMinutes}
-                disabled={generating}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                {generating ? <Loader2 className="animate-spin w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                {generating ? "Generando..." : "Generar Acta (IA)"}
-                </button>
+                <div className="flex items-center gap-2">
+                    <select 
+                        value={selectedModel} 
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="bg-white border border-gray-300 text-gray-700 px-2 py-2 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                    >
+                        <optgroup label="Gemini 2.5">
+                            <option value="models/gemini-2.5-flash">Gemini 2.5 Flash</option>
+                            <option value="models/gemini-2.5-pro">Gemini 2.5 Pro</option>
+                            <option value="models/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                        </optgroup>
+                        <optgroup label="Gemini 2.0">
+                            <option value="models/gemini-2.0-flash">Gemini 2.0 Flash</option>
+                            <option value="models/gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
+                        </optgroup>
+                        <optgroup label="Gemini 3 (Preview)">
+                            <option value="models/gemini-3-flash-preview">Gemini 3 Flash (Preview)</option>
+                            <option value="models/gemini-3-pro-preview">Gemini 3 Pro (Preview)</option>
+                        </optgroup>
+                        <optgroup label="Otros">
+                            <option value="models/gemini-flash-latest">Gemini Flash Latest</option>
+                            <option value="models/gemini-pro-latest">Gemini Pro Latest</option>
+                        </optgroup>
+                    </select>
+                    <button 
+                    onClick={handleGenerateMinutes}
+                    disabled={generating}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                    {generating ? <Loader2 className="animate-spin w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                    {generating ? "Generando..." : "Generar Acta (IA)"}
+                    </button>
+                </div>
             )}
           </div>
         </div>
@@ -342,6 +397,14 @@ function App() {
         {/* UPLOAD SCREEN */}
         {status === "idle" && (
           <div className="max-w-xl mx-auto mt-10 space-y-8">
+            <div className="bg-white p-6 rounded-xl shadow-sm border flex items-center justify-between">
+                <div>
+                    <h3 className="font-bold text-gray-800">Cuenta de Google</h3>
+                    <p className="text-xs text-gray-500">Conecta tu cuenta para usar Gemini {googleUser ? "(Conectado ✅)" : ""}</p>
+                </div>
+                <div id="google-btn"></div>
+            </div>
+
             <div className="bg-white p-8 rounded-xl shadow border border-gray-100">
                 <h2 className="text-lg font-semibold mb-6 text-center text-blue-900">Nueva Reunión</h2>
                 <div className="space-y-4">
@@ -379,19 +442,50 @@ function App() {
                 {savedSessions.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-2">
                         {savedSessions.map((sess) => (
-                            <button 
+                            <div 
                                 key={sess.name}
-                                onClick={() => handleLoadSession(sess.name)}
-                                className="text-left p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all group"
+                                className="p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all group"
                             >
-                                <div className="font-semibold text-gray-800 group-hover:text-blue-700 truncate">
-                                    {sess.name}
-                                </div>
-                                <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
-                                    <Clock className="w-3 h-3" />
-                                    {new Date(sess.timestamp * 1000).toLocaleString()}
-                                </div>
-                            </button>
+                                <button 
+                                    onClick={() => handleLoadSession(sess.name)}
+                                    className="text-left w-full"
+                                >
+                                    <div className="font-semibold text-gray-800 group-hover:text-blue-700 truncate">
+                                        {sess.name}
+                                    </div>
+                                    <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
+                                        <Clock className="w-3 h-3" />
+                                        {new Date(sess.timestamp * 1000).toLocaleString()}
+                                    </div>
+                                </button>
+                                {/* Botones de descarga de actas */}
+                                {(sess.acta_md || sess.acta_pdf) && (
+                                    <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100">
+                                        {sess.acta_md && (
+                                            <a 
+                                                href={`${API_URL}${sess.acta_md}`}
+                                                download
+                                                className="flex items-center gap-1 text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-600 hover:text-gray-800 transition-colors"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <FileText className="w-3 h-3" />
+                                                MD
+                                            </a>
+                                        )}
+                                        {sess.acta_pdf && (
+                                            <a 
+                                                href={`${API_URL}${sess.acta_pdf}`}
+                                                download
+                                                className="flex items-center gap-1 text-xs px-2 py-1 bg-red-100 hover:bg-red-200 rounded text-red-600 hover:text-red-800 transition-colors"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <Download className="w-3 h-3" />
+                                                PDF
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         ))}
                     </div>
                 ) : (
@@ -645,9 +739,35 @@ function App() {
               <div className="p-8 overflow-y-auto font-serif leading-loose whitespace-pre-wrap text-gray-800">
                 {minutes}
               </div>
-              <div className="p-4 border-t bg-gray-50 rounded-b-xl flex justify-end gap-2">
-                <button onClick={() => setMinutes(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded">Cerrar</button>
-                <button onClick={() => navigator.clipboard.writeText(minutes)} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Copiar Texto</button>
+              <div className="p-4 border-t bg-gray-50 rounded-b-xl flex justify-between items-center">
+                {/* Botones de descarga */}
+                <div className="flex gap-2">
+                  {actaFiles.md && (
+                    <a 
+                      href={`${API_URL}${actaFiles.md}`}
+                      download
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                    >
+                      <FileText className="w-4 h-4" />
+                      Descargar MD
+                    </a>
+                  )}
+                  {actaFiles.pdf && (
+                    <a 
+                      href={`${API_URL}${actaFiles.pdf}`}
+                      download
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                    >
+                      <Download className="w-4 h-4" />
+                      Descargar PDF
+                    </a>
+                  )}
+                </div>
+                {/* Botones de acción */}
+                <div className="flex gap-2">
+                  <button onClick={() => setMinutes(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded">Cerrar</button>
+                  <button onClick={() => navigator.clipboard.writeText(minutes)} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Copiar Texto</button>
+                </div>
               </div>
             </div>
           </div>

@@ -6,3 +6,9 @@ opencv-python
 torch
 easyocr
 numpy
+openai
+google-generativeai
+pandas
+openpyxl
+pydantic
+python-dotenv

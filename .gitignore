@@ -5,6 +5,10 @@ __pycache__/
 venv/
 .env
 
+# Secrets & Credentials
+backend/client_secret*.json
+backend/.client
+
 # Node / React
 node_modules/
 dist/
@@ -16,6 +20,7 @@ uploads/*
 !uploads/.gitkeep
 sessions/*
 !sessions/.gitkeep
+actas/
 
 # Logs
 *.log
